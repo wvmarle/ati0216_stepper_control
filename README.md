@@ -25,6 +25,16 @@ There are also two solder jumpers on the board.
 ## Setting up the software
 There is a number of settings in stepper_control.ino that may be changed to set the specific behaviour of various functions such as speed and timing behaviour. Set them with care.
 
+## Uploading the software
+Set up the IDE:
+* Tools > Board: "ATtiny24/44/84"
+* Tools > Chip: "ATtiny84"
+* Tools > Clock: "8 MHz (internal)"
+
+Connect the USBASP to an available USB port of the computer; use the 6p-10p adapter to connect it to the green board with 2x3 pogopins. Press the pogopins gently into the openings next to the encoder; the pin marked MISO goes to pin 1 on the board (the one marked with a square around it). Then in the IDE click the Upload button to upload the sketch.
+
+It should be possible to program with the Mode switch connected and closed (untested); it shares one of the MCU connections with the programming header. If the stepper is connected and powered up it will move noisily during programming as also here some pins are shared.
+
 ## Board behaviour
 
 ### Starting up
