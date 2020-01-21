@@ -50,8 +50,9 @@ void handleCountdown() {
     }
   }
 
+#ifndef DEMO_MODE                                           // Ignore the encoder when in demo mode.
   static uint32_t switchPressedTime;
-  if (switchState == LOW) {                                 // Switch is just pressed.
+  if (switchState == LOW) {                                 // Switch is just pressed - interrupt the cooking process.
     if (oldSwitchState == HIGH) {                           // It happened just now!
       oldSwitchState = LOW;
       switchPressedTime = myMillis();                       //
@@ -63,6 +64,7 @@ void handleCountdown() {
       }
     }
   }
+#endif
 }
 
 void startShakeMovement() {

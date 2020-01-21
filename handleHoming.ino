@@ -24,7 +24,7 @@ void handleHoming() {
         targetPosition = stepperPosition++;                 // Move down (one step at least, move until the next TIMER0 interrupt).
         bitSet(TIMSK1, OCIE1A);                             // Enable the stepper step interrupt for moving down.
         movementComplete = false;
-        setLED(RED);
+//        setLED(RED);
       }
       else {                                                // We're in position.
         stepperPosition = 0;                                // Set current position as zero (home).

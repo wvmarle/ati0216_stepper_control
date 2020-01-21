@@ -67,6 +67,12 @@
 #include <TM1637.h>
 #include <EEPROM.h>
 
+#define DEMO_MODE
+
+#ifdef DEMO_MODE
+#pragma message("Compiling for DEMO MODE.")
+#endif
+
 /*******************************************************************************
    System defaults - change these as needed.
 
@@ -76,9 +82,15 @@
       MCU maximum speed: not determined, estimate 550 rpm.
 
  *******************************************************************************/
+#ifdef DEMO_MODE
+const int16_t MIN_TIME = 10;                                // Minimum allowed time: 10 seconds.
+const int16_t MAX_TIME = 50;                                // Maximum allowed time: 45 seconds.
+#else
 const int16_t MIN_TIME = 10;                                // Minimum allowed time: 10 seconds.
 const int16_t MAX_TIME = 5990;                              // Maximum allowed time: 99 minutes, 50 seconds.
-const int32_t BLINK_FREQUENCY = 1;                          // Speed (in Hz) of the blinking of the LED and display.
+#endif
+const float NORMAL_BLINK_FREQUENCY = 1;                     // Speed (in Hz) of the normal blinking of the LED and display.
+const float FAST_BLINK_FREQUENCY = 1.5;                     // Speed (in Hz) of the fast blinking of the LED and display.
 const int32_t MOVE_DISTANCE = 150;                          // Distance of the required basket movement in mm.
 const int32_t HOMING_RPM = 30;                              // The desired speed for homing.
 const int32_t MOVE_RPM = 200;                               // The desired speed for normal up/down movement.
@@ -143,17 +155,20 @@ const uint32_t ACCEL_STEPS = ACCEL_TIME * STEPPER_MOVE_SPEED + 0.5 * ACCEL_TIME 
 const uint32_t ACCEL_SPEED_STEP = float(STEPPER_MOVE_SPEED - STEPPER_MINIMUM_SPEED) / (ACCEL_TIME * INTERRUPTS_PER_SECOND);
 const uint32_t SHAKE_ACCEL_STEPS = SHAKE_ACCEL_TIME * STEPPER_SHAKE_SPEED + 0.5 * SHAKE_ACCEL_TIME * STEPPER_SHAKE_MINIMUM_SPEED;
 const uint32_t SHAKE_ACCEL_SPEED_STEP = float(STEPPER_SHAKE_SPEED - STEPPER_SHAKE_MINIMUM_SPEED) / (SHAKE_ACCEL_TIME * INTERRUPTS_PER_SECOND);
-const uint32_t BLINK_SPEED = INTERRUPTS_PER_SECOND / (2.0 * BLINK_FREQUENCY);
+const uint32_t BLINK_SPEED_NORMAL = INTERRUPTS_PER_SECOND / (2.0 * NORMAL_BLINK_FREQUENCY);
+const uint32_t BLINK_SPEED_FAST = INTERRUPTS_PER_SECOND / (2.0 * FAST_BLINK_FREQUENCY);
+uint32_t blinkSpeed = BLINK_SPEED_NORMAL;
 
 // The various system states.
-const uint8_t HOMING = 0;                                   // Stepper is searching it's home.
-const uint8_t ENTER_TIME = 1;                               // User enters the time.
-const uint8_t MOVE_DOWN = 2;                                // Cooker moving down.
-const uint8_t COUNTDOWN = 3;                                // Countdown - cooking in progress.
-const uint8_t MOVE_UP = 4;                                  // Cooker moving up.
-const uint8_t COMPLETED = 5;                                // Cooking process completed.
-const uint8_t ERROR_STATE = 6;                              // Error detected.
-uint8_t processState = HOMING;                              // Start by homing the stepper.
+enum {
+  HOMING,                                                   // Stepper is searching it's home.
+  ENTER_TIME,                                               // User enters the time.
+  MOVE_DOWN,                                                // Cooker moving down.
+  COUNTDOWN,                                                // Countdown - cooking in progress.
+  MOVE_UP,                                                  // Cooker moving up.
+  COMPLETED,                                                // Cooking process completed.
+  ERROR_STATE,                                              // Error detected.
+} processState = HOMING;                                    // Start by homing the stepper.
 
 /*******************************************************************************
    Global variables.
@@ -220,8 +235,8 @@ void setup() {
   bitSet(TCCR1B, WGM12);                                    // CTC mode (Clear Timer on Compare).
 
   // Set up timer0. This does mess with the millis() function!
-  // Change clk/64 to clk/256, making the timer run 4 times slower. So also millis() runs 4 times slower.
-  // This makes for just over 122 ticks per second at our 8 MHz clock speed.
+  // Change the default clk/64 to clk/256, making the timer run 4 times slower.
+  // This makes for just over 122 ticks per second at our 8 MHz clock speed. We use a variable timer instead of millis() function.
   bitSet(TCCR0B, CS02);
   bitClear(TCCR0B, CS01);
   bitClear(TCCR0B, CS00);
@@ -236,7 +251,6 @@ void setup() {
   digitalWrite(ENN, LOW);                                   // Enable the stepper.
   processState = HOMING;
   blinkLED(BICOLOUR);
-  delay(100);
 }
 
 /*******************************************************************************
@@ -271,7 +285,7 @@ void loop() {
       handleMoveUp();
       break;
   }
-  if (errorCode > 0) {                                    // An error occurred; show it on the display and stop operations.
+  if (errorCode > 0) {                                      // An error occurred; show it on the display and stop operations.
     handleError();
   }
   oldSwitchState = switchState;
@@ -283,7 +297,7 @@ void loop() {
    Now myMillis() can be used instead of the normal millis() timer.
  *******************************************************************************/
 uint32_t myMillis() {
-  return millis() * 4;
+  return millis() << 2;
 }
 
 /*******************************************************************************
@@ -325,13 +339,13 @@ void  blinkLED(uint8_t colour) {
     blinkState = false;
   }
   else {
-    if (LEDBlinks == false) {                            // If we're not blinking at this moment.
-      LEDBlinks = true;                                       // start blinking,
-      blinkState = false;                                     // start with the off part of the cycle, and
+    if (LEDBlinks == false) {                               // If we're not blinking at this moment.
+      LEDBlinks = true;                                     // start blinking,
+      blinkState = false;                                   // start with the off part of the cycle, and
       LEDOff();
-      blinkCounter = 0;                                       // restart the counter.
+      blinkCounter = 0;                                     // restart the counter.
     }
-    bitWrite(PORTA, PA7, colour);                             // Set LED to the correct colour right away.
+    bitWrite(PORTA, PA7, colour);                           // Set LED to the correct colour right away.
   }
   LEDColour = colour;
 }
@@ -375,8 +389,8 @@ ISR(TIMER1_COMPB_vect) {
 }
 
 /*
-   Prescaler: clk/1024
-   Overflow: 30.52 times per second, or every 32.768 ms.
+   Prescaler: clk/256
+   Overflow: 122.07 times per second, or every 8.192 ms.
 */
 ISR(TIMER0_COMPA_vect) {
   stepperSpeed += stepperSpeedStep;                         // Calculate the new speed for the stepper in steps per second.
@@ -422,7 +436,7 @@ ISR(TIMER0_COMPB_vect) {
 void doBlinking() {
   if (LEDBlinks) {
     blinkCounter++;
-    if (blinkCounter > BLINK_SPEED) {
+    if (blinkCounter > blinkSpeed) {
       blinkCounter = 0;
       if (blinkState) {
         if (LEDColour == BICOLOUR) {
